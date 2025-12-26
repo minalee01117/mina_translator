@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Conference Helper (학회 도우미)</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#0f0f1a">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-start: #0f0f1a;
+            --bg-end: #1a1a2e;
+            --card-bg: rgba(255, 255, 255, 0.08);
+            --accent-start: #00d2ff;
+            --accent-end: #3a7bd5;
+            --btn-grad: linear-gradient(135deg, #00f2fe 0%, #4facfe 100%);
+            --pulse-color: #2ecc71;
+            --safe-top: env(safe-area-inset-top);
+            --safe-bottom: env(safe-area-inset-bottom);
+        }
+
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(180deg, var(--bg-start), var(--bg-end));
+            color: white;
+            overflow: hidden;
+        }
+
+        /* Video Container */
+        #video-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: black;
+            z-index: 1;
+        }
+
+        #video-preview {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+            /* Default to mirrored for front cam, JS will toggle */
+        }
+
+        /* Overlay UI */
+        #ui-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            pointer-events: none;
+            padding-top: var(--safe-top);
+            padding-bottom: var(--safe-bottom);
+        }
+
+        /* Subtitle Area */
+        #subtitle-area {
+            position: absolute;
+            bottom: 200px;
+            left: 5%;
+            width: 90%;
+            min-height: 80px;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(8px);
+            border-radius: 12px;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            transition: opacity 0.5s ease;
+        }
+
+        #transcription {
+            font-size: 1.1rem;
+            color: #ccc;
+            margin-bottom: 5px;
+            font-style: italic;
+        }
+
+        #translation {
+            font-size: 1.4rem;
+            color: #fff;
+            font-weight: 600;
+        }
+
+        /* Controls Panel */
+        #controls-panel {
+            margin-top: auto;
+            background: rgba(26, 26, 46, 0.85);
+            backdrop-filter: blur(15px);
+            padding: 20px 20px calc(20px + var(--safe-bottom));
+            border-radius: 24px 24px 0 0;
+            pointer-events: auto;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .row {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        select,
+        button {
+            background: var(--card-bg);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 12px;
+            border-radius: 12px;
+            font-size: 14px;
+            outline: none;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+
+        select {
+            flex: 1;
+            appearance: none;
+            background-color: #2a2a4e;
+            /* Solid dark background */
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 10px center;
+            padding-right: 40px;
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        select option {
+            background-color: #1a1a2e;
+            color: white;
+        }
+
+        button {
+            border: none;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        button:active {
+            transform: scale(0.95);
+        }
+
+        #btn-start-stop {
+            background: var(--btn-grad);
+            flex: 2;
+            height: 50px;
+            font-size: 16px;
+            box-shadow: 0 4px 15px rgba(0, 242, 254, 0.3);
+        }
+
+        #btn-start-stop.listening {
+            background: linear-gradient(135deg, #ff416c 0%, #ff4b2b 100%);
+            box-shadow: 0 4px 15px rgba(255, 65, 108, 0.3);
+        }
+
+        .icon-btn {
+            width: 50px;
+            height: 50px;
+            padding: 0;
+            flex-shrink: 0;
+        }
+
+        /* Status Dot */
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            background: #999;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 5px;
+            vertical-align: middle;
+        }
+
+        .status-listening .status-indicator {
+            background: var(--pulse-color);
+            box-shadow: 0 0 0 0 rgba(46, 204, 113, 0.7);
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% {
+                transform: scale(0.95);
+                box-shadow: 0 0 0 0 rgba(46, 204, 113, 0.7);
+            }
+
+            70% {
+                transform: scale(1);
+                box-shadow: 0 0 0 10px rgba(46, 204, 113, 0);
+            }
+
+            100% {
+                transform: scale(0.95);
+                box-shadow: 0 0 0 0 rgba(46, 204, 113, 0);
+            }
+        }
+
+        /* Gallery Overlay */
+        #gallery-panel {
+            position: fixed;
+            top: 0;
+            right: -100%;
+            width: 100%;
+            height: 100%;
+            background: var(--bg-start);
+            z-index: 100;
+            transition: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            padding: 20px;
+            box-sizing: border-box;
+            overflow-y: auto;
+        }
+
+        #gallery-panel.open {
+            right: 0;
+        }
+
+        .gallery-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-top: var(--safe-top);
+        }
+
+        .gallery-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+        }
+
+        .gallery-item {
+            aspect-ratio: 1;
+            background: #222;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .gallery-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        /* Modal for Full Image */
+        #image-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 200;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
+
+        #modal-img {
+            max-width: 90%;
+            max-height: 80%;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        }
+
+        /* Utility */
+        .hidden {
+            display: none !important;
+        }
+
+        /* Notification Toast */
+        #toast {
+            position: fixed;
+            top: 50px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 14px;
+            z-index: 1000;
+            opacity: 0;
+            transition: 0.3s;
+            pointer-events: none;
+        }
+
+        #toast.show {
+            opacity: 1;
+            top: 70px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="video-container">
+        <video id="video-preview" autoplay playsinline muted></video>
+    </div>
+
+    <div id="ui-overlay">
+        <div id="subtitle-area">
+            <div id="transcription">말씀을 시작하세요...</div>
+            <div id="translation"></div>
+        </div>
+
+        <div id="controls-panel">
+            <div class="row">
+                <select id="select-input-lang">
+                    <option value="en-US">English (US)</option>
+                    <option value="ko-KR" selected>한국어 (Korean)</option>
+                    <option value="ja-JP">日本語 (Japanese)</option>
+                    <option value="zh-CN">中文 (Chinese Simplified)</option>
+                    <option value="de-DE">Deutsch (German)</option>
+                    <option value="fr-FR">Français (French)</option>
+                    <option value="es-ES">Español (Spanish)</option>
+                </select>
+                <select id="select-target-lang">
+                    <option value="en" selected>English</option>
+                    <option value="ko">한국어</option>
+                    <option value="ja">日本語</option>
+                    <option value="zh-CN">中文</option>
+                    <option value="de">Deutsch</option>
+                    <option value="fr">Français</option>
+                    <option value="es">Español</option>
+                </select>
+            </div>
+            <div class="row">
+                <button id="btn-camera-toggle" class="icon-btn" title="카메라 전환">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                        <circle cx="12" cy="13" r="4" />
+                    </svg>
+                </button>
+                <button id="btn-start-stop">
+                    <span class="status-indicator"></span>
+                    <span id="btn-text">시작하기</span>
+                </button>
+                <button id="btn-capture" class="icon-btn" title="캡처">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                        <circle cx="8.5" cy="8.5" r="1.5" />
+                        <polyline points="21 15 16 10 5 21" />
+                    </svg>
+                </button>
+                <button id="btn-history" class="icon-btn" title="기록">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                        <polyline points="14 2 14 8 20 8" />
+                        <line x1="16" y1="13" x2="8" y2="13" />
+                        <line x1="16" y1="17" x2="8" y2="17" />
+                        <polyline points="10 9 9 9 8 9" />
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Gallery Panel -->
+    <div id="gallery-panel">
+        <div class="gallery-header">
+            <h2>스크린샷 갤러리</h2>
+            <div style="display: flex; gap: 10px;">
+                <button onclick="downloadHistory()">📜 기록 다운로드</button>
+                <button onclick="toggleGallery()" style="background:#444">닫기</button>
+            </div>
+        </div>
+        <div class="gallery-grid" id="gallery-grid">
+            <!-- Items added via JS -->
+        </div>
+    </div>
+
+    <!-- Image Modal -->
+    <div id="image-modal" onclick="closeModal()">
+        <img id="modal-img" src="" alt="Full View">
+        <button id="btn-download-img" style="margin-top:20px; background:var(--btn-grad); padding:10px 30px;"
+            onclick="downloadModalImg(event)">다운로드</button>
+    </div>
+
+    <div id="toast">복사되었습니다!</div>
+
+    <script>
+        // State
+        let isListening = false;
+        let stream = null;
+        let currentFacingMode = 'environment'; // environment = 후면, user = 전면
+        let recognition = null;
+        let history = [];
+        let snapshots = [];
+        let subtitleTimeout = null;
+
+        // Elements
+        const video = document.getElementById('video-preview');
+        const btnStartStop = document.getElementById('btn-start-stop');
+        const btnText = document.getElementById('btn-text');
+        const transcriptionEl = document.getElementById('transcription');
+        const translationEl = document.getElementById('translation');
+        const selectInputLang = document.getElementById('select-input-lang');
+        const selectTargetLang = document.getElementById('select-target-lang');
+        const galleryGrid = document.getElementById('gallery-grid');
+        const toast = document.getElementById('toast');
+
+        // 1. Camera Initialization
+        async function initCamera() {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+
+            const constraints = {
+                video: {
+                    facingMode: currentFacingMode,
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                },
+                audio: false
+            };
+
+            try {
+                stream = await navigator.mediaDevices.getUserMedia(constraints);
+                video.srcObject = stream;
+                // Flip if front camera
+                video.style.transform = currentFacingMode === 'user' ? 'scaleX(-1)' : 'scaleX(1)';
+            } catch (err) {
+                console.error("Camera error:", err);
+                showToast("카메라 권한이 필요합니다.");
+            }
+        }
+
+        document.getElementById('btn-camera-toggle').addEventListener('click', () => {
+            currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
+            initCamera();
+        });
+
+        // 2. Speech Recognition (Web Speech API)
+        function initRecognition() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) {
+                showToast("이 브라우저는 음성 인식을 지원하지 않습니다. Chrome을 사용해주세요.");
+                return;
+            }
+
+            recognition = new SpeechRecognition();
+            recognition.continuous = true;
+            recognition.interimResults = true;
+            recognition.lang = selectInputLang.value;
+
+            recognition.onresult = (event) => {
+                let interimTranscription = '';
+                let finalTranscription = '';
+
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    if (event.results[i].isFinal) {
+                        finalTranscription += event.results[i][0].transcript;
+                    } else {
+                        interimTranscription += event.results[i][0].transcript;
+                    }
+                }
+
+                if (interimTranscription) {
+                    transcriptionEl.textContent = interimTranscription;
+                    transcriptionEl.style.color = '#aaa';
+                    clearSubtitleTimeout();
+                }
+
+                if (finalTranscription) {
+                    transcriptionEl.textContent = finalTranscription;
+                    transcriptionEl.style.color = '#fff';
+                    handleTranslation(finalTranscription);
+                }
+            };
+
+            recognition.onend = () => {
+                if (isListening) recognition.start(); // Auto-restart
+            };
+
+            recognition.onerror = (event) => {
+                console.error("Recognition Error:", event.error);
+                if (event.error === 'no-speech') return;
+                showToast("인식 오류: " + event.error);
+            };
+        }
+
+        async function handleTranslation(text) {
+            const targetLang = selectTargetLang.value;
+            translationEl.textContent = "번역 중...";
+
+            try {
+                const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${targetLang}&dt=t&q=${encodeURIComponent(text)}`;
+                const response = await fetch(url);
+                const data = await response.json();
+                const translatedText = data[0][0][0];
+
+                translationEl.textContent = translatedText;
+
+                // Add to history
+                const entry = {
+                    time: new Date().toLocaleTimeString(),
+                    original: text,
+                    translated: translatedText
+                };
+                history.push(entry);
+
+                // TTS
+                speak(translatedText, targetLang);
+
+                startSubtitleTimeout();
+            } catch (err) {
+                console.error("Translation Error:", err);
+                translationEl.textContent = text; // Show original on error
+            }
+        }
+
+        function speak(text, lang) {
+            if (!window.speechSynthesis) return;
+
+            // Stop any ongoing speech
+            window.speechSynthesis.cancel();
+
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = lang;
+
+            // Wait for voices if not loaded
+            const loadVoicesAndSpeak = () => {
+                const voices = window.speechSynthesis.getVoices();
+                // Filter voices that match the language (e.g. "ko-KR")
+                const voice = voices.find(v => v.lang.toLowerCase().startsWith(lang.toLowerCase().split('-')[0]));
+                if (voice) utterance.voice = voice;
+                window.speechSynthesis.speak(utterance);
+            };
+
+            if (window.speechSynthesis.getVoices().length > 0) {
+                loadVoicesAndSpeak();
+            } else {
+                window.speechSynthesis.onvoiceschanged = loadVoicesAndSpeak;
+            }
+        }
+
+        function startSubtitleTimeout() {
+            clearSubtitleTimeout();
+            subtitleTimeout = setTimeout(() => {
+                transcriptionEl.textContent = "말씀을 시작하세요...";
+                translationEl.textContent = "";
+            }, 5000);
+        }
+
+        function clearSubtitleTimeout() {
+            if (subtitleTimeout) clearTimeout(subtitleTimeout);
+        }
+
+        btnStartStop.addEventListener('click', () => {
+            if (!isListening) {
+                isListening = true;
+                btnStartStop.classList.add('listening');
+                btnText.textContent = "중지하기";
+                document.body.classList.add('status-listening');
+                initRecognition();
+                recognition.start();
+            } else {
+                isListening = false;
+                btnStartStop.classList.remove('listening');
+                btnText.textContent = "시작하기";
+                document.body.classList.remove('status-listening');
+                recognition.stop();
+            }
+        });
+
+        selectInputLang.addEventListener('change', () => {
+            if (recognition) recognition.lang = selectInputLang.value;
+        });
+
+        // 3. Capture Functionality
+        document.getElementById('btn-capture').addEventListener('click', () => {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+
+            // Draw Video
+            if (currentFacingMode === 'user') {
+                ctx.translate(canvas.width, 0);
+                ctx.scale(-1, 1);
+            }
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            if (currentFacingMode === 'user') {
+                ctx.setTransform(1, 0, 0, 1, 0, 0);
+            }
+
+            // Draw Overlay (Subtitles)
+            const text = translationEl.textContent || transcriptionEl.textContent;
+            if (text && text !== "말씀을 시작하세요...") {
+                ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+                const rectHeight = 100;
+                ctx.fillRect(0, canvas.height - rectHeight - 50, canvas.width, rectHeight);
+
+                ctx.fillStyle = "white";
+                ctx.font = "bold 40px Inter, sans-serif";
+                ctx.textAlign = "center";
+                wrapText(ctx, text, canvas.width / 2, canvas.height - 110, canvas.width - 100, 50);
+            }
+
+            // Draw Timestamp
+            ctx.fillStyle = "white";
+            ctx.font = "24px Inter, sans-serif";
+            ctx.textAlign = "right";
+            ctx.fillText(new Date().toLocaleString(), canvas.width - 30, 50);
+
+            const dataUrl = canvas.toDataURL('image/png');
+            snapshots.push(dataUrl);
+            updateGallery();
+            showToast("캡처되었습니다!");
+        });
+
+        function wrapText(context, text, x, y, maxWidth, lineHeight) {
+            let words = text.split(' ');
+            let line = '';
+            for (let n = 0; n < words.length; n++) {
+                let testLine = line + words[n] + ' ';
+                let metrics = context.measureText(testLine);
+                let testWidth = metrics.width;
+                if (testWidth > maxWidth && n > 0) {
+                    context.fillText(line, x, y);
+                    line = words[n] + ' ';
+                    y += lineHeight;
+                }
+                else {
+                    line = testLine;
+                }
+            }
+            context.fillText(line, x, y);
+        }
+
+        // 4. Gallery & History
+        function toggleGallery() {
+            document.getElementById('gallery-panel').classList.toggle('open');
+        }
+
+        document.getElementById('btn-history').addEventListener('click', toggleGallery);
+
+        function updateGallery() {
+            galleryGrid.innerHTML = '';
+            snapshots.slice().reverse().forEach((src, idx) => {
+                const div = document.createElement('div');
+                div.className = 'gallery-item';
+                div.onclick = () => openModal(src);
+                const img = document.createElement('img');
+                img.src = src;
+                div.appendChild(img);
+                galleryGrid.appendChild(div);
+            });
+        }
+
+        function openModal(src) {
+            document.getElementById('modal-img').src = src;
+            document.getElementById('image-modal').style.display = 'flex';
+        }
+
+        function closeModal() {
+            document.getElementById('image-modal').style.display = 'none';
+        }
+
+        function downloadModalImg(e) {
+            e.stopPropagation();
+            const src = document.getElementById('modal-img').src;
+            const a = document.createElement('a');
+            a.href = src;
+            a.download = `conference_helper_${Date.now()}.png`;
+            a.click();
+        }
+
+        function downloadHistory() {
+            if (history.length === 0) {
+                showToast("저장된 기록이 없습니다.");
+                return;
+            }
+            let text = "Conference Helper History\n========================\n\n";
+            history.forEach(h => {
+                text += `[${h.time}]\nOriginal: ${h.original}\nTranslated: ${h.translated}\n\n`;
+            });
+            const blob = new Blob([text], { type: 'text/plain' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `history_${new Date().toISOString().slice(0, 10)}.txt`;
+            a.click();
+        }
+
+        function showToast(msg) {
+            toast.textContent = msg;
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 2000);
+        }
+
+        // Initialize
+        initCamera();
+
+        // PWA Service Worker Registration
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js').then(reg => {
+                    console.log('SW registered:', reg);
+                }).catch(err => {
+                    console.log('SW registration failed:', err);
+                });
+            });
+        }
+    </script>
+</body>
+
+</html>
